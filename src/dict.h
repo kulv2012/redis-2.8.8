@@ -68,7 +68,7 @@ typedef struct dictType {
 typedef struct dictht {
     dictEntry **table;
     unsigned long size;
-    unsigned long sizemask;
+    unsigned long sizemask;//size-1;
     unsigned long used;
 } dictht;
 

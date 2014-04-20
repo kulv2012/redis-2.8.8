@@ -312,6 +312,7 @@ void keysCommand(redisClient *c) {
 /* This callback is used by scanGenericCommand in order to collect elements
  * returned by the dictionary iterator into a list. */
 void scanCallback(void *privdata, const dictEntry *de) {
+//将扫描过程中的元素加入到参数privdate代表的数组里面去，以待发送。
     void **pd = (void**) privdata;
     list *keys = pd[0];
     robj *o = pd[1];
@@ -336,7 +337,7 @@ void scanCallback(void *privdata, const dictEntry *de) {
         redisPanic("Type not handled in SCAN callback.");
     }
 
-    listAddNodeTail(keys, key);
+    listAddNodeTail(keys, key);//增加进去
     if (val) listAddNodeTail(keys, val);
 }
 
@@ -374,7 +375,7 @@ void scanGenericCommand(redisClient *c, robj *o, unsigned long cursor) {
     int rv;
     int i, j;
     char buf[REDIS_LONGSTR_SIZE];
-    list *keys = listCreate();
+    list *keys = listCreate();//返回的数据放在这里
     listNode *node, *nextnode;
     long count = 10;
     sds pat;
@@ -383,8 +384,7 @@ void scanGenericCommand(redisClient *c, robj *o, unsigned long cursor) {
 
     /* Object must be NULL (to iterate keys names), or the type of the object
      * must be Set, Sorted Set, or Hash. */
-    redisAssert(o == NULL || o->type == REDIS_SET || o->type == REDIS_HASH ||
-                o->type == REDIS_ZSET);
+    redisAssert(o == NULL || o->type == REDIS_SET || o->type == REDIS_HASH || o->type == REDIS_ZSET);
 
     /* Set i to the first option argument. The previous one is the cursor. */
     i = (o == NULL) ? 2 : 3; /* Skip the key argument if needed. */
@@ -430,7 +430,7 @@ void scanGenericCommand(redisClient *c, robj *o, unsigned long cursor) {
 
     /* Handle the case of a hash table. */
     ht = NULL;
-    if (o == NULL) {
+    if (o == NULL) {//键扫描
         ht = c->db->dict;
     } else if (o->type == REDIS_SET && o->encoding == REDIS_ENCODING_HT) {
         ht = o->ptr;
@@ -442,8 +442,8 @@ void scanGenericCommand(redisClient *c, robj *o, unsigned long cursor) {
         ht = zs->dict;
         count *= 2; /* We return key / value for this type. */
     }
-
-    if (ht) {
+//由于redis的ziplist, intset等类型数据量挺少，所以可用一次返回的。下面的else if 做这个事情。全部返回一个key 。 
+    if (ht) {//一般的存储，不是intset, ziplist
         void *privdata[2];
 
         /* We pass two pointers to the callback: the list to which it will
@@ -452,26 +452,26 @@ void scanGenericCommand(redisClient *c, robj *o, unsigned long cursor) {
         privdata[0] = keys;
         privdata[1] = o;
         do {
+        	//一个个扫描，从cursor开始，然后调用回调函数将数据设置到keys返回数据集里面。
             cursor = dictScan(ht, cursor, scanCallback, privdata);
         } while (cursor && listLength(keys) < count);
     } else if (o->type == REDIS_SET) {
         int pos = 0;
         int64_t ll;
 
-        while(intsetGet(o->ptr,pos++,&ll))
+        while(intsetGet(o->ptr,pos++,&ll))//将这个set里面的数据全部返回，因为它是压缩的intset，会很小的。
             listAddNodeTail(keys,createStringObjectFromLongLong(ll));
         cursor = 0;
-    } else if (o->type == REDIS_HASH || o->type == REDIS_ZSET) {
+    } else if (o->type == REDIS_HASH || o->type == REDIS_ZSET) {//那么一定是ziplist了，字符串表示的数据结构，不会太大。
         unsigned char *p = ziplistIndex(o->ptr,0);
         unsigned char *vstr;
         unsigned int vlen;
         long long vll;
 
-        while(p) {
+        while(p) {//扫描整个键，然后全部返回这一条。并且返回cursor为0表示没东西了。其实这个就等于没有遍历
             ziplistGet(p,&vstr,&vlen,&vll);
             listAddNodeTail(keys,
-                (vstr != NULL) ? createStringObject((char*)vstr,vlen) :
-                                 createStringObjectFromLongLong(vll));
+                 (vstr != NULL) ? createStringObject((char*)vstr,vlen) : createStringObjectFromLongLong(vll));
             p = ziplistNext(o->ptr,p);
         }
         cursor = 0;
